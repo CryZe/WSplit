@@ -544,17 +544,17 @@
                 num = Math.Max(num3, num);
                 num2 = Math.Min(num3, num2);
             }
-            double num4 = this.parent.split.CompTime(this.parent.split.LastIndex);
+            double num4 = this.parent.Run.CompTime(this.parent.Run.LastIndex);
 
             // "Temporary"? fix for the bug described below
             if (num4 != 0.0)
             {
-                for (int i = 0; (i < this.Deltas.Count) && (i <= this.parent.split.LastIndex); i++)
+                for (int i = 0; (i < this.Deltas.Count) && (i <= this.parent.Run.LastIndex); i++)
                 {
-                    if ((this.parent.split.segments[i].LiveTime != 0.0) && (this.parent.split.CompTime(i) != 0.0))
+                    if ((this.parent.Run.segments[i].LiveTime != 0.0) && (this.parent.Run.CompTime(i) != 0.0))
                     {
                         // This next line causes a graphic crash if the last segment is empty and the segment i is not.
-                        float x = (float)(this.parent.split.CompTime(i) / num4);
+                        float x = (float)(this.parent.Run.CompTime(i) / num4);
                         float y = 0.5f;
                         if ((num - num2) > 0.0)
                         {
@@ -600,7 +600,7 @@
                 
                 // The detailed view used to only show a column if it had an ending time. I decided to change it, because
                 // the user can still decide to show a column or not manually.
-                if (Settings.Profile.DViewShowOld || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == "Old"))
+                if (Settings.Profile.DViewShowOld || (Settings.Profile.DViewShowComp && this.parent.Run.ComparingType == "Old"))
                 {
                     this.segs.Columns[1].Visible = true;
                     num += 0x22;
@@ -608,7 +608,7 @@
                 else
                     this.segs.Columns[1].Visible = false;
 
-                if (Settings.Profile.DViewShowBest || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == LiveSplit.Model.Run.PersonalBestComparisonName))
+                if (Settings.Profile.DViewShowBest || (Settings.Profile.DViewShowComp && this.parent.Run.ComparingType == LiveSplit.Model.Run.PersonalBestComparisonName))
                 {
                     this.segs.Columns[2].Visible = true;
                     num += 0x22;
@@ -620,7 +620,7 @@
                 else
                     this.segs.Columns[2].Visible = false;
 
-                if (Settings.Profile.DViewShowSumOfBests || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == BestSegmentsComparisonGenerator.ComparisonName))
+                if (Settings.Profile.DViewShowSumOfBests || (Settings.Profile.DViewShowComp && this.parent.Run.ComparingType == BestSegmentsComparisonGenerator.ComparisonName))
                 {
                     this.segs.Columns[3].Visible = true;
                     num += 0x22;

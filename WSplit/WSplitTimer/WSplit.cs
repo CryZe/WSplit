@@ -89,7 +89,6 @@ namespace WSplitTimer
         private OpenFileDialog openFileDialog;
         private SettingsDialog settingsDialog;
 
-        private int attemptCount;
         private Size clockMinimumSize = new Size(120, 25);
         private Size clockMinimumSizeAbsolute = new Size(120, 25);
         private Rectangle clockRect;
@@ -103,12 +102,10 @@ namespace WSplitTimer
         private Timer doubleTapDelay;
         private DetailedView dview;
         private Timer flashDelay;
-        private int offsetStart;
         private DateTime offsetStartTime = new DateTime();
         private string runFile;
-        private string runTitle = "";
         private int segHeight = 14;
-        public IRun split = new Run(new LiveSplit.Model.Comparisons.StandardComparisonGeneratorsFactory());
+        public IRun Run = new Run(new LiveSplit.Model.Comparisons.StandardComparisonGeneratorsFactory());
         public LiveSplitState State;
         public ITimerModel Model;
         private Timer startDelay;
@@ -120,6 +117,8 @@ namespace WSplitTimer
         private int wideSegWidth = 100;
         private int wideSegWidthBase = 100;
         private int wideSegX;
+        
+        private String runTitle => "\{Run?.GameName ?? ""} \{Run?.CategoryName ?? ""}";
 
         public bool unsavedSplits;
         public bool modalWindowOpened;
@@ -167,7 +166,7 @@ namespace WSplitTimer
 
         public WSplit()
         {
-            State = new LiveSplitState(split, this, null, null, null);
+            State = new LiveSplitState(Run, this, null, null, null);
             Model = new TimerModel();
             State.RegisterTimerModel(Model);
 
@@ -179,7 +178,7 @@ namespace WSplitTimer
             // Eventually, the painter should not be dependant of the WSplit object...
             this.painter = new Painter(this);
 
-            this.dview = new DetailedView(this.split, this);
+            this.dview = new DetailedView(this.Run, this);
             this.Initialize();
         }
 
@@ -282,10 +281,7 @@ namespace WSplitTimer
 
         private void closeFile()
         {
-            this.split.Clear();
-            this.runTitle = "";
-            this.attemptCount = 0;
-            this.offsetStart = 0;
+            this.Run.Clear();
             this.detailPreferredSize = this.clockMinimumSize;
             this.InitializeDisplay();
         }
@@ -376,7 +372,7 @@ namespace WSplitTimer
             this.modalWindowOpened = true;
 
             // A few settings are necessary before calling the custom ShowDialog method
-            this.SettingsDialog.StartDelay = this.timeFormatter(((double)this.offsetStart) / 1000.0, TimeFormat.Seconds);
+            this.SettingsDialog.StartDelay = this.timeFormatter(Run.Offset.TotalSeconds, TimeFormat.Seconds);
             this.SettingsDialog.DetailedWidth = this.clockRect.Width;
 
             // Costum ShowDialog method...
@@ -384,7 +380,7 @@ namespace WSplitTimer
             {
                 this.SettingsDialog.ApplyChanges();
 
-                this.offsetStart = Convert.ToInt32((double)(this.timeParse(this.SettingsDialog.StartDelay) * 1000.0));
+                Run.Offset = TimeSpan.FromSeconds(this.timeParse(this.SettingsDialog.StartDelay));
                 this.clockRect.Width = this.SettingsDialog.DetailedWidth;
                 this.updateDetailed();
                 this.InitializeSettings();
@@ -419,7 +415,7 @@ namespace WSplitTimer
             int displaySegs = Settings.Profile.DisplaySegs;
             if (!Settings.Profile.DisplayBlankSegs)
             {
-                displaySegs = Math.Min(this.split.Count, displaySegs);
+                displaySegs = Math.Min(this.Run.Count, displaySegs);
             }
             return displaySegs;
         }
@@ -490,7 +486,7 @@ namespace WSplitTimer
             int wideSegs = Settings.Profile.WideSegs;
             if (!Settings.Profile.WideSegBlanks)
             {
-                wideSegs = Math.Min(this.split.Count, wideSegs);
+                wideSegs = Math.Min(this.Run.Count, wideSegs);
             }
             return wideSegs;
         }
@@ -918,7 +914,7 @@ namespace WSplitTimer
             this.clockRect.Size = base.Size;
 
             string[] commandLineArgs = Environment.GetCommandLineArgs();
-            for (int i = 1; (i < commandLineArgs.Length) && !this.split.LiveRun; i++)
+            for (int i = 1; (i < commandLineArgs.Length) && !(State.CurrentPhase == TimerPhase.Running || State.CurrentPhase == TimerPhase.Paused); i++)
             {
                 this.runFile = commandLineArgs[i];
                 this.loadFile();
@@ -979,7 +975,6 @@ namespace WSplitTimer
 
             this.populateRecentFiles();
 
-            this.timer.useFallback = Settings.Profile.FallbackPreference == 3;
             this.showDecimalSeparator.Checked = Settings.Profile.ShowDecimalSeparator;
             this.clockAccent.Checked = Settings.Profile.ClockAccent;
             base.Opacity = Math.Min(Math.Abs(Settings.Profile.Opacity), 1.0);
@@ -1037,14 +1032,14 @@ namespace WSplitTimer
                 this.startDelay.Dispose();
                 this.startDelay = null;
             }
-            this.split.Reset();
+            Model.Reset();
 
             this.newOldButton.Enabled = false;
             this.menuItemStartAt.Enabled = true;
             this.stopButton.Enabled = false;
             this.resetButton.Enabled = false;
 
-            if (this.split.LastIndex < 0)
+            if (!Run.Any())
             {
                 this.dview.Hide();
                 this.runFile = null;
@@ -1073,7 +1068,6 @@ namespace WSplitTimer
                 this.saveAsButton.Enabled = true;
             }
             this.stopwatch.Enabled = false;
-            this.timer.Reset();
             this.populateDetailed();
             this.updateDisplay();
             this.setDisplay((DisplayMode)Settings.Profile.DisplayMode);
@@ -1131,10 +1125,7 @@ namespace WSplitTimer
         {
             if ((File.Exists(this.runFile) && (new FileInfo(this.runFile).Length < (10.0 * Math.Pow(1024.0, 2.0)))) && IsTextFile(this.runFile))
             {
-                this.split.Clear();
-                this.offsetStart = 0;
-                this.runTitle = "";
-                this.attemptCount = 0;
+                this.Run.Clear();
                 this.detailPreferredSize = this.clockMinimumSize;
                 using (StreamReader reader = new StreamReader(this.runFile))
                 {
@@ -1194,28 +1185,28 @@ namespace WSplitTimer
                                 double.TryParse(strArray2[1], NumberStyles.AllowDecimalPoint, CultureInfo.CreateSpecificCulture(""), out num4);
                                 double.TryParse(strArray2[2], NumberStyles.AllowDecimalPoint, CultureInfo.CreateSpecificCulture(""), out num5);
                                 double.TryParse(strArray2[3], NumberStyles.AllowDecimalPoint, CultureInfo.CreateSpecificCulture(""), out num6);
-                                this.split.Add(new Segment(name, num4, num5, num6));
+                                this.Run.Add(new Segment(name, num4, num5, num6));
                             }
                         }
                     }
-                    for (int i = 0; i < this.split.Count; i++)
+                    for (int i = 0; i < this.Run.Count; i++)
                     {
                         if (i < list.Count)
                         {
-                            this.split.segments[i].IconPath = list[i];
+                            this.Run.segments[i].IconPath = list[i];
                             try
                             {
-                                this.split.segments[i].Icon = Image.FromFile(list[i]);
+                                this.Run.segments[i].Icon = Image.FromFile(list[i]);
                             }
                             catch
                             {
-                                this.split.segments[i].Icon = Resources.MissingIcon;
+                                this.Run.segments[i].Icon = Resources.MissingIcon;
                             }
                         }
                         else
                         {
-                            this.split.segments[i].Icon = Resources.MissingIcon;
-                            this.split.segments[i].IconPath = "";
+                            this.Run.segments[i].Icon = Resources.MissingIcon;
+                            this.Run.segments[i].IconPath = "";
                         }
                     }
                     this.currentDispMode = DisplayMode.Null;
@@ -1264,8 +1255,8 @@ namespace WSplitTimer
 
         private void newButton_Click(object sender, EventArgs e)
         {
-            this.split.UpdateBest(Settings.Profile.BestAsOverall);
-            RunEditorDialog editor = new RunEditorDialog(this.split)
+            this.Run.UpdateBest(Settings.Profile.BestAsOverall);
+            RunEditorDialog editor = new RunEditorDialog(this.Run)
             {
                 titleBox = { Text = this.runTitle },
                 attemptsBox = { Text = this.attemptCount.ToString() }
@@ -1275,10 +1266,10 @@ namespace WSplitTimer
             this.modalWindowOpened = true;
             if (editor.ShowDialog() == DialogResult.OK)
             {
-                this.split.Clear();
+                this.Run.Clear();
                 foreach (Segment segment in editor.editList)
                 {
-                    this.split.Add(segment);
+                    this.Run.Add(segment);
                 }
                 this.runTitle = editor.titleBox.Text;
                 int.TryParse(editor.attemptsBox.Text, out this.attemptCount);
@@ -1287,7 +1278,7 @@ namespace WSplitTimer
             }
             else
             {
-                this.split.RestoreBest();
+                this.Run.RestoreBest();
             }
             base.TopMost = Settings.Profile.OnTop;
             this.dview.TopMost = Settings.Profile.DViewOnTop;
@@ -1296,12 +1287,12 @@ namespace WSplitTimer
 
         private void newOldButton_Click(object sender, EventArgs e)
         {
-            this.split.LiveToOld();
+            this.Run.LiveToOld();
         }
 
         public void nextStage()
         {
-            this.split.Next();
+            this.Run.Next();
             this.updateDisplay();
         }
 
@@ -1363,7 +1354,7 @@ namespace WSplitTimer
             }
 
             // If the split aren't done, so if the timer isn't running
-            else if (!this.split.Done && (this.startDelay == null))
+            else if (!this.Run.Done && (this.startDelay == null))
             {
                 // If the timer had not been started yet
                 if (this.timer.ElapsedTicks == 0L)
@@ -1405,7 +1396,7 @@ namespace WSplitTimer
             this.dview.finalSeg.Rows.Clear();
             this.dview.finalSeg.Rows.Add();
 
-            foreach (Segment segment in this.split.segments)
+            foreach (Segment segment in this.Run.segments)
             {
                 this.dview.segs.Rows.Add(new object[] { segment.Name });
                 if (this.dview.finalSeg.RowCount > 1)
@@ -1458,13 +1449,13 @@ namespace WSplitTimer
 
         public void prevStage()
         {
-            if (this.split.LiveIndex >= 1)
+            if (this.Run.LiveIndex >= 1)
             {
-                if (this.split.LiveIndex > this.split.LastIndex)
+                if (this.Run.LiveIndex > this.Run.LastIndex)
                 {
                     this.stopwatch.Enabled = true;
                 }
-                this.split.Previous();
+                this.Run.Previous();
                 this.updateDisplay();
             }
         }
@@ -1522,7 +1513,7 @@ namespace WSplitTimer
             }
             else
             {
-                this.split.UpdateBest(Settings.Profile.BestAsOverall);
+                this.Run.UpdateBest(Settings.Profile.BestAsOverall);
                 new FileInfo(this.runFile);
                 StreamWriter writer = null;
                 try
@@ -1533,7 +1524,7 @@ namespace WSplitTimer
                     writer.WriteLine("Offset=" + this.offsetStart);
                     writer.WriteLine(string.Concat(new object[] { "Size=", this.detailPreferredSize.Width, ",", this.detailPreferredSize.Height }));
                     List<string> list = new List<string>();
-                    foreach (Segment segment in this.split.segments)
+                    foreach (Segment segment in this.Run.segments)
                     {
                         if (segment.Name != null)
                         {
@@ -1612,7 +1603,7 @@ namespace WSplitTimer
             {
                 this.displayTimerOnlyButton.Checked = true;
             }
-            if (this.split.LiveRun)
+            if (this.Run.LiveRun)
             {
                 if (mode == DisplayMode.Compact)
                 {
@@ -1722,7 +1713,7 @@ namespace WSplitTimer
                 }
                 else
                 {
-                    if (this.split.LiveRun)
+                    if (this.Run.LiveRun)
                     {
                         this.attemptCount++;
                     }
@@ -1817,13 +1808,13 @@ namespace WSplitTimer
                     this.doubleTapDelay.Interval = Math.Min(0x1388, Settings.Profile.DoubleTapGuard);
                     this.doubleTapDelay.Enabled = true;
                 }
-                if (this.split.LiveRun)
+                if (this.Run.LiveRun)
                 {
                     if (this.stopwatch.Enabled && (this.startDelay == null))
                     {
                         this.doSplit();
                     }
-                    else if (this.split.Done)
+                    else if (this.Run.Done)
                     {
                         this.StopSplits();
                     }
@@ -1916,88 +1907,88 @@ namespace WSplitTimer
         {
             ColorSettings colors = ColorSettings.Profile;
             // For every split, checks conditions set the time string, the color and the width of the split time
-            for (int i = 0; i <= this.split.LastIndex; i++)
+            for (int i = 0; i <= this.Run.LastIndex; i++)
             {
-                if ((i < this.split.LiveIndex) && (this.timer.ElapsedTicks > 0L))
+                if ((i < this.Run.LiveIndex) && (this.timer.ElapsedTicks > 0L))
                 {
-                    double num2 = this.split.SegDelta(this.split.segments[i].LiveTime, i);
-                    double num3 = this.split.RunDelta(this.split.segments[i].LiveTime, i);
+                    double num2 = this.Run.SegDelta(this.Run.segments[i].LiveTime, i);
+                    double num3 = this.Run.RunDelta(this.Run.segments[i].LiveTime, i);
 
                     // If there is a Delta to write...
-                    if ((this.split.segments[i].LiveTime > 0.0) && (this.split.CompTime(i) > 0.0))
+                    if ((this.Run.segments[i].LiveTime > 0.0) && (this.Run.CompTime(i) > 0.0))
                     {
-                        this.split.segments[i].TimeString = this.timeFormatter(this.split.RunDeltaAt(i), TimeFormat.Delta);
-                        if (this.split.LiveSegment(i) != 0.0 && (this.split.segments[i].BestSegment == 0.0 || this.split.LiveSegment(i) < this.split.segments[i].BestSegment))
+                        this.Run.segments[i].TimeString = this.timeFormatter(this.Run.RunDeltaAt(i), TimeFormat.Delta);
+                        if (this.Run.LiveSegment(i) != 0.0 && (this.Run.segments[i].BestSegment == 0.0 || this.Run.LiveSegment(i) < this.Run.segments[i].BestSegment))
                         {
-                            this.split.segments[i].TimeColor = colors.SegBestSegment;
+                            this.Run.segments[i].TimeColor = colors.SegBestSegment;
                         }
                         else if (num3 < 0.0)
                         {
                             if (num2 < 0.0)
                             {
-                                this.split.segments[i].TimeColor = colors.SegAheadGain;
+                                this.Run.segments[i].TimeColor = colors.SegAheadGain;
                             }
                             else
                             {
-                                this.split.segments[i].TimeColor = colors.SegAheadLoss;
+                                this.Run.segments[i].TimeColor = colors.SegAheadLoss;
                             }
                         }
                         else if (num2 > 0.0)
                         {
-                            this.split.segments[i].TimeColor = colors.SegBehindLoss;
+                            this.Run.segments[i].TimeColor = colors.SegBehindLoss;
                         }
                         else
                         {
-                            this.split.segments[i].TimeColor = colors.SegBehindGain;
+                            this.Run.segments[i].TimeColor = colors.SegBehindGain;
                         }
                     }
                     // If the split was missed...
-                    else if (this.split.segments[i].LiveTime == 0.0)
+                    else if (this.Run.segments[i].LiveTime == 0.0)
                     {
-                        this.split.segments[i].TimeString = "-";
-                        this.split.segments[i].TimeColor = colors.SegMissingTime;
+                        this.Run.segments[i].TimeString = "-";
+                        this.Run.segments[i].TimeColor = colors.SegMissingTime;
                     }
                     // If there was no live time to compare splits to...
-                    else if (this.split.CompTime(i) == 0.0)
+                    else if (this.Run.CompTime(i) == 0.0)
                     {
-                        this.split.segments[i].TimeString = this.timeFormatter(this.split.segments[i].LiveTime, TimeFormat.Short);
+                        this.Run.segments[i].TimeString = this.timeFormatter(this.Run.segments[i].LiveTime, TimeFormat.Short);
                         if (/*(i == 0 || this.split.segments[i - 1].LiveTime > 0.0) &&
                             (this.split.segments[i].BestSegment == 0.0) || this.split.LiveSegment(i) < this.split.segments[i].BestSegment*/
-                            this.split.LiveSegment(i) != 0.0 && (this.split.segments[i].BestSegment == 0.0 || this.split.LiveSegment(i) < this.split.segments[i].BestSegment))
+                            this.Run.LiveSegment(i) != 0.0 && (this.Run.segments[i].BestSegment == 0.0 || this.Run.LiveSegment(i) < this.Run.segments[i].BestSegment))
                         {
-                            this.split.segments[i].TimeColor = colors.SegBestSegment;
+                            this.Run.segments[i].TimeColor = colors.SegBestSegment;
                         }
                         else
                         {
-                            this.split.segments[i].TimeColor = colors.SegNewTime;
+                            this.Run.segments[i].TimeColor = colors.SegNewTime;
                         }
                     }
                 }
-                else if (i == this.split.LiveIndex)
+                else if (i == this.Run.LiveIndex)
                 {
-                    this.split.segments[i].TimeColor = colors.LiveSeg;
-                    if (this.split.CompTime(i) > 0.0)
+                    this.Run.segments[i].TimeColor = colors.LiveSeg;
+                    if (this.Run.CompTime(i) > 0.0)
                     {
-                        this.split.segments[i].TimeString = this.timeFormatter(this.split.CompTime(i), TimeFormat.Long);
+                        this.Run.segments[i].TimeString = this.timeFormatter(this.Run.CompTime(i), TimeFormat.Long);
                     }
                     else
                     {
-                        this.split.segments[i].TimeString = "-";
+                        this.Run.segments[i].TimeString = "-";
                     }
                 }
                 else
                 {
-                    this.split.segments[i].TimeColor = colors.FutureSegTime;
-                    if (this.split.CompTime(i) > 0.0)
+                    this.Run.segments[i].TimeColor = colors.FutureSegTime;
+                    if (this.Run.CompTime(i) > 0.0)
                     {
-                        this.split.segments[i].TimeString = this.timeFormatter(this.split.CompTime(i), TimeFormat.Short);
+                        this.Run.segments[i].TimeString = this.timeFormatter(this.Run.CompTime(i), TimeFormat.Short);
                     }
                     else
                     {
-                        this.split.segments[i].TimeString = "-";
+                        this.Run.segments[i].TimeString = "-";
                     }
                 }
-                this.split.segments[i].TimeWidth = MeasureDisplayStringWidth(this.split.segments[i].TimeString, this.timeFont);
+                this.Run.segments[i].TimeWidth = MeasureDisplayStringWidth(this.Run.segments[i].TimeString, this.timeFont);
             }
 
             this.painter.RequestBackgroundRedraw();
@@ -2022,18 +2013,18 @@ namespace WSplitTimer
                     DataGridViewCell liveTimeCell = row.Cells[4];
                     DataGridViewCell deltaCell = row.Cells[5];
 
-                    double oldTime = this.split.segments[j].OldTime;
-                    double bestTime = this.split.segments[j].BestTime;
-                    double sumOfBestsTime = this.split.SumOfBests(j);
-                    double liveTime = this.split.segments[j].LiveTime;
-                    double oldDelta = this.split.LastDelta(j);
+                    double oldTime = this.Run.segments[j].OldTime;
+                    double bestTime = this.Run.segments[j].BestTime;
+                    double sumOfBestsTime = this.Run.SumOfBests(j);
+                    double liveTime = this.Run.segments[j].LiveTime;
+                    double oldDelta = this.Run.LastDelta(j);
 
-                    double secs = this.split.RunDeltaAt(j);
+                    double secs = this.Run.RunDeltaAt(j);
 
                     // Puts oldTime in the "Old" column
                     if (oldTime > 0.0)
                         oldTimeCell.Value = this.timeFormatter(oldTime, TimeFormat.Short);
-                    else if (this.split.LastSegment.OldTime > 0.0)
+                    else if (this.Run.LastSegment.OldTime > 0.0)
                         oldTimeCell.Value = "-";
                     else
                         oldTimeCell.Value = null;
@@ -2042,13 +2033,13 @@ namespace WSplitTimer
                     if (bestTime > 0.0)
                     {
                         bestTimeCell.Value = this.timeFormatter(bestTime, TimeFormat.Short);
-                        if ((this.split.segments[j].BestSegment > 0.0) && Settings.Profile.DViewShowSegs)
+                        if ((this.Run.segments[j].BestSegment > 0.0) && Settings.Profile.DViewShowSegs)
                         {
                             object obj2 = bestTimeCell.Value;
-                            bestTimeCell.Value = string.Concat(new object[] { obj2, " [", this.timeFormatter(this.split.segments[j].BestSegment, TimeFormat.Short), "]" });
+                            bestTimeCell.Value = string.Concat(new object[] { obj2, " [", this.timeFormatter(this.Run.segments[j].BestSegment, TimeFormat.Short), "]" });
                         }
                     }
-                    else if (this.split.LastSegment.BestTime > 0.0)
+                    else if (this.Run.LastSegment.BestTime > 0.0)
                         bestTimeCell.Value = "-";
                     else
                         bestTimeCell.Value = null;
@@ -2056,7 +2047,7 @@ namespace WSplitTimer
                     // Puts sumOfBestsTime in "Sum of Bests" column
                     if (sumOfBestsTime > 0.0)
                         sumOfBestsTimeCell.Value = this.timeFormatter(sumOfBestsTime, TimeFormat.Short);
-                    else if (this.split.SumOfBests(this.split.LastIndex) > 0.0)
+                    else if (this.Run.SumOfBests(this.Run.LastIndex) > 0.0)
                         sumOfBestsTimeCell.Value = "-";
                     else
                         sumOfBestsTimeCell.Value = null;
@@ -2065,19 +2056,19 @@ namespace WSplitTimer
                     if (liveTime > 0.0)
                     {
                         liveTimeCell.Value = this.timeFormatter(liveTime, TimeFormat.Short);
-                        if ((this.split.LiveSegment(j) > 0.0) && Settings.Profile.DViewShowSegs)
+                        if ((this.Run.LiveSegment(j) > 0.0) && Settings.Profile.DViewShowSegs)
                         {
                             object obj3 = liveTimeCell.Value;
-                            liveTimeCell.Value = string.Concat(new object[] { obj3, " [", this.timeFormatter(this.split.LiveSegment(j), TimeFormat.Short), "]" });
+                            liveTimeCell.Value = string.Concat(new object[] { obj3, " [", this.timeFormatter(this.Run.LiveSegment(j), TimeFormat.Short), "]" });
                         }
                     }
-                    else if ((j < this.split.LiveIndex) && (this.timer.ElapsedTicks > 0L))
+                    else if ((j < this.Run.LiveIndex) && (this.timer.ElapsedTicks > 0L))
                         liveTimeCell.Value = "-";
                     else
                         liveTimeCell.Value = null;
 
                     // If the current row corresponds to the current split
-                    if (j == this.split.LiveIndex)
+                    if (j == this.Run.LiveIndex)
                     {
                         foreach (DataGridViewCell cell in row.Cells)
                         {
@@ -2095,14 +2086,14 @@ namespace WSplitTimer
                         }
 
                         // If the current row is before the current split and the timer is running
-                        if ((j < this.split.LiveIndex) && (this.timer.ElapsedTicks > 0L))
+                        if ((j < this.Run.LiveIndex) && (this.timer.ElapsedTicks > 0L))
                         {
-                            if ((liveTime > 0.0) && (this.split.CompTime(j) > 0.0))
+                            if ((liveTime > 0.0) && (this.Run.CompTime(j) > 0.0))
                             {
                                 deltaCell.Value = this.timeFormatter(secs, TimeFormat.Delta);
 
                                 liveTimeCell.Style.ForeColor = this.getDViewDeltaColor(secs, secs);
-                                if (this.split.LiveSegment(j) > 0.0 && (this.split.segments[j].BestSegment == 0.0 || this.split.LiveSegment(j) < this.split.segments[j].BestSegment))
+                                if (this.Run.LiveSegment(j) > 0.0 && (this.Run.segments[j].BestSegment == 0.0 || this.Run.LiveSegment(j) < this.Run.segments[j].BestSegment))
                                     deltaCell.Style.ForeColor = ColorSettings.Profile.UsedDViewSegBestSegment;
                                 else
                                     deltaCell.Style.ForeColor = this.getDViewDeltaColor(secs, oldDelta);
@@ -2129,13 +2120,13 @@ namespace WSplitTimer
                     this.dview.segs.Rows[0].Cells[0].Value = "Segment";
                 this.dview.segs.DefaultCellStyle.SelectionForeColor = ColorSettings.Profile.UsedDViewSegCurrentText;
 
-                if (this.split.ComparingType == Split.CompareType.Old)
+                if (this.Run.ComparingType == Split.CompareType.Old)
                 {
                     this.dview.segs.Columns[1].DefaultCellStyle.ForeColor = ColorSettings.Profile.UsedDViewSegCurrentText;
                     this.dview.segs.Columns[2].DefaultCellStyle.ForeColor = ColorSettings.Profile.UsedDViewSegDefaultText;
                     this.dview.segs.Columns[3].DefaultCellStyle.ForeColor = ColorSettings.Profile.UsedDViewSegDefaultText;
                 }
-                else if (this.split.ComparingType == Split.CompareType.Best)
+                else if (this.Run.ComparingType == Split.CompareType.Best)
                 {
                     this.dview.segs.Columns[1].DefaultCellStyle.ForeColor = ColorSettings.Profile.UsedDViewSegDefaultText;
                     this.dview.segs.Columns[2].DefaultCellStyle.ForeColor = ColorSettings.Profile.UsedDViewSegCurrentText;
@@ -2157,10 +2148,10 @@ namespace WSplitTimer
                 this.dview.updateColumns();
 
                 int num10 = Math.Max(Settings.Profile.DisplaySegs, 2);
-                int liveIndex = this.split.LiveIndex;
+                int liveIndex = this.Run.LiveIndex;
                 if (num10 < 3)
                 {
-                    int num13 = this.split.LiveIndex;
+                    int num13 = this.Run.LiveIndex;
                 }
                 this.dview.segs.Height = Math.Max(2, Math.Min(num10, this.dview.segs.RowCount)) * this.dview.segs.RowTemplate.Height;
                 if (this.dview.segs.RowCount > 1)
@@ -2170,7 +2161,7 @@ namespace WSplitTimer
                     {
                         num11 = 2;
                     }
-                    this.dview.segs.FirstDisplayedScrollingRowIndex = Math.Min((int)(this.dview.segs.RowCount - 1), (int)(1 + Math.Max(0, (this.split.LiveIndex - num10) + num11)));
+                    this.dview.segs.FirstDisplayedScrollingRowIndex = Math.Min((int)(this.dview.segs.RowCount - 1), (int)(1 + Math.Max(0, (this.Run.LiveIndex - num10) + num11)));
                 }
                 this.dview.finalSeg.FirstDisplayedScrollingRowIndex = 1;
                 for (int k = 1; k < this.dview.finalSeg.Columns.Count; k++)
@@ -2187,13 +2178,13 @@ namespace WSplitTimer
         private void updateDisplay()
         {
             if (Settings.Profile.CompareAgainst == 0)
-                this.split.CompType = Split.CompareType.Fastest;
+                this.Run.CompType = Split.CompareType.Fastest;
             else if (Settings.Profile.CompareAgainst == 1)
-                this.split.CompType = Split.CompareType.Old;
+                this.Run.CompType = Split.CompareType.Old;
             else if (Settings.Profile.CompareAgainst == 2)
-                this.split.CompType = Split.CompareType.Best;
+                this.Run.CompType = Split.CompareType.Best;
             else if (Settings.Profile.CompareAgainst == 3)
-                this.split.CompType = Split.CompareType.SumOfBests;
+                this.Run.CompType = Split.CompareType.SumOfBests;
             this.updateDetailed();
             base.Invalidate();
         }
@@ -2398,9 +2389,9 @@ namespace WSplitTimer
                 {
                     if ((y <= (this.detailResizingY - this.segHeight)) && (Settings.Profile.DisplaySegs > 2))
                     {
-                        if (!Settings.Profile.DisplayBlankSegs && (Settings.Profile.DisplaySegs > this.split.Count))
+                        if (!Settings.Profile.DisplayBlankSegs && (Settings.Profile.DisplaySegs > this.Run.Count))
                         {
-                            Settings.Profile.DisplaySegs = Math.Min(this.split.Count - 1, 40);
+                            Settings.Profile.DisplaySegs = Math.Min(this.Run.Count - 1, 40);
                             this.updateDetailed();
                         }
                         else
@@ -2415,7 +2406,7 @@ namespace WSplitTimer
                     if (Settings.Profile.DisplayBlankSegs)
                         num3 = 40;
                     else
-                        num3 = Math.Min(this.split.Count, 40);
+                        num3 = Math.Min(this.Run.Count, 40);
 
                     if (Settings.Profile.DisplaySegs < num3)
                     {
@@ -2431,9 +2422,9 @@ namespace WSplitTimer
                 {
                     if ((x <= (this.wideResizingX - this.wideSegWidth)) && (Settings.Profile.WideSegs > 1))
                     {
-                        if (!Settings.Profile.WideSegBlanks && (Settings.Profile.WideSegs > this.split.Count))
+                        if (!Settings.Profile.WideSegBlanks && (Settings.Profile.WideSegs > this.Run.Count))
                         {
-                            Settings.Profile.WideSegs = Math.Min(this.split.Count - 1, 20);
+                            Settings.Profile.WideSegs = Math.Min(this.Run.Count - 1, 20);
                         }
                         else
                         {
@@ -2453,7 +2444,7 @@ namespace WSplitTimer
                     }
                     else
                     {
-                        num4 = Math.Min(this.split.Count, 20);
+                        num4 = Math.Min(this.Run.Count, 20);
                     }
                     if (Settings.Profile.WideSegs < num4)
                     {
@@ -2586,7 +2577,7 @@ namespace WSplitTimer
                 this.unsavedSplits = false;
             }
 
-            else if (this.split.NeedUpdate(Settings.Profile.BestAsOverall))
+            else if (this.Run.NeedUpdate(Settings.Profile.BestAsOverall))
             {
                 this.modalWindowOpened = true;
                 DialogResult result = MessageBoxEx.Show(
@@ -2611,7 +2602,7 @@ namespace WSplitTimer
 
         private void ResetSplits()
         {
-            if (this.split.NeedUpdate(Settings.Profile.BestAsOverall))
+            if (this.Run.NeedUpdate(Settings.Profile.BestAsOverall))
             {
                 this.modalWindowOpened = true;
                 DialogResult result = MessageBoxEx.Show(this,
@@ -2623,7 +2614,7 @@ namespace WSplitTimer
 
                 if (result == DialogResult.Yes)
                 {
-                    this.split.UpdateBest(Settings.Profile.BestAsOverall);
+                    this.Run.UpdateBest(Settings.Profile.BestAsOverall);
                     this.unsavedSplits = true;
                 }
                 if (result != DialogResult.Cancel)
@@ -2637,9 +2628,9 @@ namespace WSplitTimer
 
         private void StopSplits()
         {
-            if (this.split.NeedUpdate(Settings.Profile.BestAsOverall))
+            if (this.Run.NeedUpdate(Settings.Profile.BestAsOverall))
             {
-                this.split.UpdateBest(Settings.Profile.BestAsOverall);
+                this.Run.UpdateBest(Settings.Profile.BestAsOverall);
                 this.unsavedSplits = true;
             }
             this.InitializeDisplay();
@@ -2655,7 +2646,7 @@ namespace WSplitTimer
             }
 
             // If the split aren't done, so if the timer isn't running
-            else if (!this.split.Done && (this.startDelay == null))
+            else if (!this.Run.Done && (this.startDelay == null))
             {
                 // If the timer had not been started yet
                 if (this.timer.ElapsedTicks == 0L)
@@ -2846,7 +2837,7 @@ namespace WSplitTimer
                             statusTextRectangle = new Rectangle(1, wsplit.clockRect.Bottom + 2, wsplit.Width - 2, 14);  // Run status
 
                             // If the segment icon will be shown, the segment name have to be pushed right
-                            if ((Settings.Profile.SegmentIcons > 0) && !wsplit.split.Done)
+                            if ((Settings.Profile.SegmentIcons > 0) && !wsplit.Run.Done)
                             {
                                 headerTextRectangle.Width -= 4 + (8 * (Settings.Profile.SegmentIcons + 1));
                                 headerTextRectangle.X += 4 + (8 * (Settings.Profile.SegmentIcons + 1));
@@ -2923,27 +2914,27 @@ namespace WSplitTimer
                         }
 
                         // The run is done
-                        else if (wsplit.split.Done)
+                        else if (wsplit.Run.Done)
                         {
-                            if (wsplit.split.CompTime(wsplit.split.LastIndex) == 0.0)
+                            if (wsplit.Run.CompTime(wsplit.Run.LastIndex) == 0.0)
                             {
                                 if (wsplit.currentDispMode != DisplayMode.Wide)
                                     format4.Alignment = StringAlignment.Far;
 
                                 statusText = "Done";
                             }
-                            else if (wsplit.split.LastSegment.LiveTime < wsplit.split.CompTime(wsplit.split.LastIndex))
+                            else if (wsplit.Run.LastSegment.LiveTime < wsplit.Run.CompTime(wsplit.Run.LastIndex))
                                 statusText = "New Record";
                             else
                                 statusText = "Done";
                         }
 
                         // The run is going
-                        else if ((wsplit.currentDispMode == DisplayMode.Compact) && (wsplit.split.CompTime(wsplit.split.LiveIndex) != 0.0))
-                            statusText = wsplit.split.ComparingType.ToString() + ": " + wsplit.timeFormatter(wsplit.split.CompTime(wsplit.split.LiveIndex), TimeFormat.Long);
+                        else if ((wsplit.currentDispMode == DisplayMode.Compact) && (wsplit.Run.CompTime(wsplit.Run.LiveIndex) != 0.0))
+                            statusText = wsplit.Run.ComparingType.ToString() + ": " + wsplit.timeFormatter(wsplit.Run.CompTime(wsplit.Run.LiveIndex), TimeFormat.Long);
                         else if (this.segLosingTime)
                             statusText = "Live Segment";
-                        else if (((wsplit.split.LiveIndex > 0) && (wsplit.split.segments[wsplit.split.LiveIndex - 1].LiveTime > 0.0)) && (wsplit.split.CompTime(wsplit.split.LiveIndex - 1) != 0.0))
+                        else if (((wsplit.Run.LiveIndex > 0) && (wsplit.Run.segments[wsplit.Run.LiveIndex - 1].LiveTime > 0.0)) && (wsplit.Run.CompTime(wsplit.Run.LiveIndex - 1) != 0.0))
                             statusText = "Previous Segment";
 
                         // Detailed mode
@@ -2992,7 +2983,7 @@ namespace WSplitTimer
                             }
                         }
 
-                        else if (wsplit.split.Done)
+                        else if (wsplit.Run.Done)
                         {
                             if (wsplit.currentDispMode == DisplayMode.Wide)
                             {
@@ -3003,7 +2994,7 @@ namespace WSplitTimer
                                 s = "Final";
                         }
                         else if (wsplit.currentDispMode == DisplayMode.Compact)
-                            s = wsplit.split.CurrentSegment.Name;
+                            s = wsplit.Run.CurrentSegment.Name;
                         else if ((wsplit.runTitle != "") && Settings.Profile.ShowTitle)
                             s = wsplit.runTitle;
                         else
@@ -3057,7 +3048,7 @@ namespace WSplitTimer
 
                         // Flag2 = Show last
                         bool flag2 = false;
-                        if (((num5 > 3) && (((num13 + num5) - 1) < wsplit.split.LastIndex)) && (((wsplit.currentDispMode == DisplayMode.Detailed) && Settings.Profile.ShowLastDetailed) || ((wsplit.currentDispMode == DisplayMode.Wide) && Settings.Profile.ShowLastWide)))
+                        if (((num5 > 3) && (((num13 + num5) - 1) < wsplit.Run.LastIndex)) && (((wsplit.currentDispMode == DisplayMode.Detailed) && Settings.Profile.ShowLastDetailed) || ((wsplit.currentDispMode == DisplayMode.Wide) && Settings.Profile.ShowLastWide)))
                             flag2 = true;
 
                         if (wsplit.currentDispMode == DisplayMode.Wide)
@@ -3096,7 +3087,7 @@ namespace WSplitTimer
                         Rectangle rect = new Rectangle(0, 0, 0, 1);
 
                         int num18 = 0;
-                        for (int i = num13; (num18 < num5) && (i <= wsplit.split.LastIndex); i++)
+                        for (int i = num13; (num18 < num5) && (i <= wsplit.Run.LastIndex); i++)
                         {
                             int segTimeWidth;
                             Rectangle rectangle10;
@@ -3108,19 +3099,19 @@ namespace WSplitTimer
 
                             if (((num18 + 1) >= num5) && flag2)
                             {
-                                i = wsplit.split.LastIndex;
+                                i = wsplit.Run.LastIndex;
                                 y += 3;
                                 num16 += 2;
                             }
 
                             Brush brush3 = new SolidBrush(ColorSettings.Profile.FutureSegName);
-                            string str9 = wsplit.split.segments[i].TimeString;
-                            string name = wsplit.split.segments[i].Name;
+                            string str9 = wsplit.Run.segments[i].TimeString;
+                            string name = wsplit.Run.segments[i].Name;
 
-                            if ((i == wsplit.split.LiveIndex) && this.runLosingTime)
+                            if ((i == wsplit.Run.LiveIndex) && this.runLosingTime)
                                 segTimeWidth = this.segTimeWidth;
                             else
-                                segTimeWidth = wsplit.split.segments[i].TimeWidth;
+                                segTimeWidth = wsplit.Run.segments[i].TimeWidth;
 
                             ColorMatrix newColorMatrix = new ColorMatrix
                             {
@@ -3154,11 +3145,11 @@ namespace WSplitTimer
                                     rectangle12.Height /= 2;
                                 }
                             }
-                            if ((i < wsplit.split.LiveIndex) && (wsplit.timer.ElapsedTicks > 0L))
+                            if ((i < wsplit.Run.LiveIndex) && (wsplit.timer.ElapsedTicks > 0L))
                             {
                                 brush3 = new SolidBrush(ColorSettings.Profile.PastSeg);
                             }
-                            else if (i == wsplit.split.LiveIndex)
+                            else if (i == wsplit.Run.LiveIndex)
                             {
                                 brush3 = new SolidBrush(ColorSettings.Profile.LiveSeg);
                                 rect = rectangle10;
@@ -3176,42 +3167,42 @@ namespace WSplitTimer
                             {
                                 goto Label_1F67;
                             }
-                            if ((i < wsplit.split.LiveIndex) && (wsplit.timer.ElapsedTicks > 0L))
+                            if ((i < wsplit.Run.LiveIndex) && (wsplit.timer.ElapsedTicks > 0L))
                             {
                                 newColorMatrix.Matrix33 = 0.85f;
                                 switch (x)
                                 {
                                     case 0x10:
-                                        grayIcon = wsplit.split.segments[i].GrayIcon16;
+                                        grayIcon = wsplit.Run.segments[i].GrayIcon16;
                                         goto Label_1EE9;
 
                                     case 0x18:
-                                        grayIcon = wsplit.split.segments[i].GrayIcon24;
+                                        grayIcon = wsplit.Run.segments[i].GrayIcon24;
                                         goto Label_1EE9;
 
                                     case 0x20:
-                                        grayIcon = wsplit.split.segments[i].GrayIcon32;
+                                        grayIcon = wsplit.Run.segments[i].GrayIcon32;
                                         goto Label_1EE9;
                                 }
-                                grayIcon = wsplit.split.segments[i].GrayIcon;
+                                grayIcon = wsplit.Run.segments[i].GrayIcon;
                             }
                             else
                             {
                                 switch (x)
                                 {
                                     case 0x10:
-                                        grayIcon = wsplit.split.segments[i].Icon16;
+                                        grayIcon = wsplit.Run.segments[i].Icon16;
                                         goto Label_1EE9;
 
                                     case 0x18:
-                                        grayIcon = wsplit.split.segments[i].Icon24;
+                                        grayIcon = wsplit.Run.segments[i].Icon24;
                                         goto Label_1EE9;
 
                                     case 0x20:
-                                        grayIcon = wsplit.split.segments[i].Icon32;
+                                        grayIcon = wsplit.Run.segments[i].Icon32;
                                         goto Label_1EE9;
                                 }
-                                grayIcon = wsplit.split.segments[i].Icon;
+                                grayIcon = wsplit.Run.segments[i].Icon;
                             }
                         Label_1EE9:
                             attributes = new ImageAttributes();
@@ -3226,17 +3217,17 @@ namespace WSplitTimer
                         Label_1F67:
                             bgGraphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
                             bgGraphics.DrawString(name, wsplit.displayFont, brush3, rectangle11, format6);
-                            if (i != wsplit.split.LiveIndex)
+                            if (i != wsplit.Run.LiveIndex)
                             {
                                 bgGraphics.TextRenderingHint = TextRenderingHint.AntiAlias;
-                                bgGraphics.DrawString(str9, wsplit.timeFont, new SolidBrush(wsplit.split.segments[i].TimeColor), rectangle12, format7);
+                                bgGraphics.DrawString(str9, wsplit.timeFont, new SolidBrush(wsplit.Run.segments[i].TimeColor), rectangle12, format7);
                             }
                             num16 += wsplit.wideSegWidth;
                             y += wsplit.segHeight;
                             num18++;
                         }
 
-                        if (wsplit.split.LiveRun && !wsplit.split.Done)
+                        if (wsplit.Run.LiveRun && !wsplit.Run.Done)
                         {
                             Pen pen = new Pen(new SolidBrush(ColorSettings.Profile.SegHighlightBorder));
                             if (wsplit.currentDispMode == DisplayMode.Wide)
@@ -3255,25 +3246,25 @@ namespace WSplitTimer
                     // Code for drawing clock back has been moved to another function. Current method's signature is temporary
                     this.DrawClockBack(angle, num8, bgGraphics);
 
-                    if (((x > 0) && (wsplit.currentDispMode == DisplayMode.Compact)) && (wsplit.split.LiveRun && !wsplit.split.Done))
+                    if (((x > 0) && (wsplit.currentDispMode == DisplayMode.Compact)) && (wsplit.Run.LiveRun && !wsplit.Run.Done))
                     {
                         Image icon;
                         switch (x)
                         {
                             case 0x10:
-                                icon = wsplit.split.CurrentSegment.Icon16;
+                                icon = wsplit.Run.CurrentSegment.Icon16;
                                 break;
 
                             case 0x18:
-                                icon = wsplit.split.CurrentSegment.Icon24;
+                                icon = wsplit.Run.CurrentSegment.Icon24;
                                 break;
 
                             case 0x20:
-                                icon = wsplit.split.CurrentSegment.Icon32;
+                                icon = wsplit.Run.CurrentSegment.Icon32;
                                 break;
 
                             default:
-                                icon = wsplit.split.CurrentSegment.Icon;
+                                icon = wsplit.Run.CurrentSegment.Icon;
                                 break;
                         }
                         Rectangle rectangle14 = new Rectangle(3, 3, x, x);
@@ -3314,8 +3305,8 @@ namespace WSplitTimer
                 }
 
                 TimeSpan elapsed = wsplit.timer.Elapsed;
-                double num3 = wsplit.split.SegDelta(elapsed.TotalSeconds, wsplit.split.LiveIndex);
-                double secs = wsplit.split.RunDelta(elapsed.TotalSeconds, wsplit.split.LiveIndex);
+                double num3 = wsplit.Run.SegDelta(elapsed.TotalSeconds, wsplit.Run.LiveIndex);
+                double secs = wsplit.Run.RunDelta(elapsed.TotalSeconds, wsplit.Run.LiveIndex);
                 int num5 = 0;
                 float angle = 0f;
 
@@ -3335,8 +3326,8 @@ namespace WSplitTimer
                         span2 -= DateTime.UtcNow - wsplit.offsetStartTime;
                     }
                 }
-                else if (wsplit.split.Done)
-                    span2 = TimeSpan.FromSeconds(wsplit.split.LastSegment.LiveTime);
+                else if (wsplit.Run.Done)
+                    span2 = TimeSpan.FromSeconds(wsplit.Run.LastSegment.LiveTime);
                 else
                     span2 = elapsed;
 
@@ -3393,7 +3384,7 @@ namespace WSplitTimer
 
                 int num8 = 0;
 
-                if (((x > 16) && (wsplit.currentDispMode == DisplayMode.Compact)) && (wsplit.split.LiveRun && !wsplit.split.Done))
+                if (((x > 16) && (wsplit.currentDispMode == DisplayMode.Compact)) && (wsplit.Run.LiveRun && !wsplit.Run.Done))
                     num8 = x + 6;
 
                 //clockScale = Math.Min((float)(((float)(wsplit.clockRect.Width - num8)) / 124f), (float)(((float)wsplit.clockRect.Height) / 26f));
@@ -3403,11 +3394,11 @@ namespace WSplitTimer
                 Color dViewClockColor = new Color();
                 if (wsplit.timer.IsRunning)
                 {
-                    if (wsplit.split.LiveRun)
+                    if (wsplit.Run.LiveRun)
                     {
-                        if (wsplit.split.Done)
+                        if (wsplit.Run.Done)
                         {
-                            if ((wsplit.split.LastSegment.LiveTime < wsplit.split.CompTime(wsplit.split.LastIndex)) || (wsplit.split.CompTime(wsplit.split.LastIndex) == 0.0))
+                            if ((wsplit.Run.LastSegment.LiveTime < wsplit.Run.CompTime(wsplit.Run.LastIndex)) || (wsplit.Run.CompTime(wsplit.Run.LastIndex) == 0.0))
                             {
                                 clockColor = ColorSettings.Profile.RecordFore;
                                 this.clockGrColor = ColorSettings.Profile.RecordBack;
@@ -3431,7 +3422,7 @@ namespace WSplitTimer
                             clockColor = ColorSettings.Profile.Flash;
                             dViewClockColor = ColorSettings.Profile.DViewFlash;
                         }
-                        else if (wsplit.split.CompTime() == 0.0)
+                        else if (wsplit.Run.CompTime() == 0.0)
                         {
                             clockColor = ColorSettings.Profile.AheadFore;
                             this.clockGrColor = ColorSettings.Profile.AheadBack;
@@ -3440,7 +3431,7 @@ namespace WSplitTimer
 
                             dViewClockColor = ColorSettings.Profile.UsedDViewAhead;
                         }
-                        else if (elapsed.TotalSeconds < wsplit.split.CompTime())
+                        else if (elapsed.TotalSeconds < wsplit.Run.CompTime())
                         {
                             if (num3 < 0.0)
                             {
@@ -3502,7 +3493,7 @@ namespace WSplitTimer
 
                     dViewClockColor = ColorSettings.Profile.UsedDViewDelay;
                 }
-                else if (wsplit.split.LiveRun)
+                else if (wsplit.Run.LiveRun)
                 {
                     clockColor = ColorSettings.Profile.AheadFore;
                     this.clockGrColor = ColorSettings.Profile.AheadBack;
@@ -3566,7 +3557,7 @@ namespace WSplitTimer
                     {
                         rectangle2 = new Rectangle(1, 2, wsplit.Width - 1, 13);
                         layoutRectangle = new Rectangle(1, wsplit.clockRect.Bottom + 2, wsplit.Width - 1, 14);
-                        if ((Settings.Profile.SegmentIcons > 0) && !wsplit.split.Done)
+                        if ((Settings.Profile.SegmentIcons > 0) && !wsplit.Run.Done)
                         {
                             rectangle2.Width -= 2 + x;
                             rectangle2.X += 2 + x;
@@ -3586,11 +3577,11 @@ namespace WSplitTimer
 
                     if (wsplit.timer.ElapsedTicks != 0L)
                     {
-                        if (wsplit.split.Done)
+                        if (wsplit.Run.Done)
                         {
-                            if (wsplit.split.CompTime(wsplit.split.LastIndex) != 0.0)
+                            if (wsplit.Run.CompTime(wsplit.Run.LastIndex) != 0.0)
                             {
-                                num10 = wsplit.split.SegDelta(wsplit.split.LastSegment.LiveTime, wsplit.split.LastIndex);
+                                num10 = wsplit.Run.SegDelta(wsplit.Run.LastSegment.LiveTime, wsplit.Run.LastIndex);
                                 text = wsplit.timeFormatter(num10, TimeFormat.DeltaShort);
                             }
                         }
@@ -3609,14 +3600,14 @@ namespace WSplitTimer
                         }
 
                         // If we aren't losing time on the current segment and if the current segment isn't the first segment...
-                        else if (wsplit.split.LiveIndex > 0)
+                        else if (wsplit.Run.LiveIndex > 0)
                         {
                             // The number to be written becomes the previous segment delta:
-                            num10 = wsplit.split.SegDelta(wsplit.split.segments[wsplit.split.LiveIndex - 1].LiveTime, wsplit.split.LiveIndex - 1);
+                            num10 = wsplit.Run.SegDelta(wsplit.Run.segments[wsplit.Run.LiveIndex - 1].LiveTime, wsplit.Run.LiveIndex - 1);
 
                             // Though, if the previous split was skipped or if the previous split had no time, we don't write anything...
                             // wsplit will probably change.
-                            if ((wsplit.split.segments[wsplit.split.LiveIndex - 1].LiveTime > 0.0) && (wsplit.split.CompTime(wsplit.split.LiveIndex - 1) != 0.0))
+                            if ((wsplit.Run.segments[wsplit.Run.LiveIndex - 1].LiveTime > 0.0) && (wsplit.Run.CompTime(wsplit.Run.LiveIndex - 1) != 0.0))
                             {
                                 text = wsplit.timeFormatter(num10, TimeFormat.DeltaShort);
                             }
@@ -3627,11 +3618,11 @@ namespace WSplitTimer
                     if (wsplit.currentDispMode != DisplayMode.Detailed)
                     {
                         // If splits are done
-                        if (wsplit.split.Done)
+                        if (wsplit.Run.Done)
                         {
-                            if (wsplit.split.CompTime(wsplit.split.LastIndex) != 0.0)
+                            if (wsplit.Run.CompTime(wsplit.Run.LastIndex) != 0.0)
                             {
-                                double num11 = wsplit.split.RunDeltaAt(wsplit.split.LastIndex);
+                                double num11 = wsplit.Run.RunDeltaAt(wsplit.Run.LastIndex);
                                 str4 = wsplit.timeFormatter(num11, TimeFormat.Delta);
                                 if (num11 < 0.0)
                                 {
@@ -3661,10 +3652,10 @@ namespace WSplitTimer
                         }
 
                         // If there is a previous split time and there is a time to compare it to...
-                        else if (((wsplit.split.LiveIndex > 0) && (wsplit.split.segments[wsplit.split.LiveIndex - 1].LiveTime > 0.0)) && (wsplit.split.CompTime(wsplit.split.LiveIndex - 1) != 0.0))
+                        else if (((wsplit.Run.LiveIndex > 0) && (wsplit.Run.segments[wsplit.Run.LiveIndex - 1].LiveTime > 0.0)) && (wsplit.Run.CompTime(wsplit.Run.LiveIndex - 1) != 0.0))
                         {
                             // Stores the run delta at the previous split in num12
-                            double num12 = wsplit.split.RunDeltaAt(wsplit.split.LiveIndex - 1);
+                            double num12 = wsplit.Run.RunDeltaAt(wsplit.Run.LiveIndex - 1);
                             str4 = wsplit.timeFormatter(num12, TimeFormat.Delta);
                             if (num12 < 0.0)
                             {
@@ -3693,8 +3684,8 @@ namespace WSplitTimer
                 }
 
                 int num13 = 0;
-                int num14 = (wsplit.split.LiveIndex - num5) + 2;
-                int liveIndex = wsplit.split.LiveIndex;
+                int num14 = (wsplit.Run.LiveIndex - num5) + 2;
+                int liveIndex = wsplit.Run.LiveIndex;
                 if (num5 >= 2)
                 {
                     liveIndex--;
@@ -3703,18 +3694,18 @@ namespace WSplitTimer
                 {
                     num14++;
                 }
-                num13 = Math.Max(0, Math.Min(liveIndex, Math.Min((wsplit.split.LastIndex - num5) + 1, num14)));
+                num13 = Math.Max(0, Math.Min(liveIndex, Math.Min((wsplit.Run.LastIndex - num5) + 1, num14)));
                 Rectangle rectangle3 = new Rectangle();
-                Color timeColor = wsplit.split.CurrentSegment.TimeColor;
-                string timeString = wsplit.split.CurrentSegment.TimeString;
+                Color timeColor = wsplit.Run.CurrentSegment.TimeColor;
+                string timeString = wsplit.Run.CurrentSegment.TimeString;
 
                 // If in wide or detailed desplay mode and if not done...
-                if (((wsplit.currentDispMode == DisplayMode.Wide) || (wsplit.currentDispMode == DisplayMode.Detailed)) && !wsplit.split.Done)
+                if (((wsplit.currentDispMode == DisplayMode.Wide) || (wsplit.currentDispMode == DisplayMode.Detailed)) && !wsplit.Run.Done)
                 {
                     this.runLosingTime = false; // Not losing time... ?
 
                     // If there is a time to compare to and one current segment delta or run delta is greater than 0.0
-                    if ((wsplit.split.CompTime() > 0.0) && ((num3 > 0.0) || (secs > 0.0)))
+                    if ((wsplit.Run.CompTime() > 0.0) && ((num3 > 0.0) || (secs > 0.0)))
                     {
                         this.runLosingTime = true;  // Losing time...
                         // Formats run delta in timeString:
@@ -3730,12 +3721,12 @@ namespace WSplitTimer
 
                     // If in the Wide display mode...
                     if (wsplit.currentDispMode == DisplayMode.Wide)
-                        rectangle3 = new Rectangle((wsplit.clockRect.Right + (wsplit.wideSegWidth * (wsplit.split.LiveIndex - num13))) + 4, wsplit.Height / 2, (wsplit.wideSegWidth - x) - 2, wsplit.Height / 2);
+                        rectangle3 = new Rectangle((wsplit.clockRect.Right + (wsplit.wideSegWidth * (wsplit.Run.LiveIndex - num13))) + 4, wsplit.Height / 2, (wsplit.wideSegWidth - x) - 2, wsplit.Height / 2);
                     // Otherwise...
                     else
                     {
                         // Builds a rectangle for the live segment time
-                        rectangle3 = new Rectangle(x, wsplit.segHeight * (wsplit.split.LiveIndex - num13), wsplit.Width - x, wsplit.segHeight);
+                        rectangle3 = new Rectangle(x, wsplit.segHeight * (wsplit.Run.LiveIndex - num13), wsplit.Width - x, wsplit.segHeight);
                         // Moves the rectangle down if we have to show the run title
                         if ((wsplit.runTitle != "") && Settings.Profile.ShowTitle)
                         {
@@ -3772,9 +3763,9 @@ namespace WSplitTimer
                     // num10 -> What has to be written in the status bar
 
                     // If the time to write in the status bar is a new best segment...
-                    if (!this.segLosingTime && wsplit.split.LiveIndex > 0 &&
-                        wsplit.split.LiveSegment(wsplit.split.LiveIndex - 1) != 0.0 && (wsplit.split.segments[wsplit.split.LiveIndex - 1].BestSegment == 0.0 ||
-                        wsplit.split.LiveSegment(wsplit.split.LiveIndex - 1) < wsplit.split.segments[wsplit.split.LiveIndex - 1].BestSegment))
+                    if (!this.segLosingTime && wsplit.Run.LiveIndex > 0 &&
+                        wsplit.Run.LiveSegment(wsplit.Run.LiveIndex - 1) != 0.0 && (wsplit.Run.segments[wsplit.Run.LiveIndex - 1].BestSegment == 0.0 ||
+                        wsplit.Run.LiveSegment(wsplit.Run.LiveIndex - 1) < wsplit.Run.segments[wsplit.Run.LiveIndex - 1].BestSegment))
                     {
                         graphics.DrawString(text, wsplit.timeFont, new SolidBrush(ColorSettings.Profile.SegBestSegment), rectangle2, format);
                     }
@@ -3793,7 +3784,7 @@ namespace WSplitTimer
                         graphics.DrawString(str4, wsplit.timeFont, white, layoutRectangle, format2);
                     }
                 }
-                if (((wsplit.currentDispMode == DisplayMode.Wide) || (wsplit.currentDispMode == DisplayMode.Detailed)) && !wsplit.split.Done)
+                if (((wsplit.currentDispMode == DisplayMode.Wide) || (wsplit.currentDispMode == DisplayMode.Detailed)) && !wsplit.Run.Done)
                 {
                     StringFormat format9 = new StringFormat
                     {
