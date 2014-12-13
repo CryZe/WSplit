@@ -12,6 +12,8 @@
     using Properties;
     using System.Text;
     using System.Globalization;
+    using LiveSplit.Model;
+    using LiveSplit.Model.Comparisons;
 
     public class RunEditorDialog : Form
     {
@@ -21,7 +23,7 @@
         private int cellHeight;
         private Button discardButton;
         private Control eCtl;
-        public List<Segment> editList = new List<Segment>();
+        public List<ISegment> editList = new List<ISegment>();
         private DataGridViewImageColumn icon;
         private DataGridViewTextBoxColumn iconPath;
         private Button insertButton;
@@ -39,23 +41,19 @@
         public TextBox titleBox;
 
         private Button buttonAutoFillBests;
-        private Button buttonImport;
-        private ContextMenuStrip contextMenuImport;
-        private ToolStripMenuItem menuItemImportLlanfair;
-        private ToolStripMenuItem menuItemImportSplitterZ;
 
         private OpenFileDialog openFileDialog;
 
         private int windowHeight;
 
-        public RunEditorDialog(Split splits)
+        public RunEditorDialog(IRun splits)
         {
             this.InitializeComponent();
             this.cellHeight = this.runView.RowTemplate.Height;
             this.windowHeight = (base.Height - (this.runView.Height - this.cellHeight)) - 2;
             this.MaximumSize = new Size(500, (15 * this.cellHeight) + this.windowHeight);
 
-            foreach (Segment segment in splits.segments)
+            foreach (var segment in splits)
                 this.editList.Add(segment);
 
             this.populateList(this.editList);
@@ -123,10 +121,6 @@
             this.label3 = new Label();
             this.attemptsBox = new TextBox();
             this.buttonAutoFillBests = new Button();
-            this.buttonImport = new Button();
-            this.contextMenuImport = new ContextMenuStrip();
-            this.menuItemImportLlanfair = new ToolStripMenuItem();
-            this.menuItemImportSplitterZ = new ToolStripMenuItem();
             this.openFileDialog = new OpenFileDialog();
 
             ((ISupportInitialize)this.runView).BeginInit();
@@ -223,30 +217,6 @@
             this.buttonAutoFillBests.UseVisualStyleBackColor = true;
             this.buttonAutoFillBests.Click += this.buttonAutoFillBests_Click;
 
-            this.buttonImport.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-            //this.buttonImport.ContextMenuStrip = this.contextMenuImport;
-            this.buttonImport.Location = new Point(12, 106);
-            this.buttonImport.Name = "buttonImport";
-            this.buttonImport.Size = new Size(70, 23);
-            this.buttonImport.TabIndex = 5;
-            this.buttonImport.Text = "Import... ▼";
-            this.buttonImport.UseVisualStyleBackColor = true;
-            this.buttonImport.MouseUp += this.buttonImport_MouseUp;
-
-            this.contextMenuImport.Items.Add(this.menuItemImportLlanfair);
-            this.contextMenuImport.Items.Add(this.menuItemImportSplitterZ);
-            this.contextMenuImport.Name = "contextMenuImport";
-
-            //this.menuItemImportLlanfair.Enabled = false;
-            this.menuItemImportLlanfair.Name = "menuItemImportLlanfair";
-            this.menuItemImportLlanfair.Text = "Import from Llanfair";
-            this.menuItemImportLlanfair.Click += this.menuItemImportLlanfair_Click;
-
-            //this.menuItemImportSplitterZ.Enabled = false;
-            this.menuItemImportSplitterZ.Name = "menuItemImportSplitterZ";
-            this.menuItemImportSplitterZ.Text = "Import from SplitterZ";
-            this.menuItemImportSplitterZ.Click += this.menuItemImportSplitterZ_Click;
-
             this.oldOffset.Anchor = AnchorStyles.Right | AnchorStyles.Top;
             this.oldOffset.Location = new Point(230, 0x1f);
             this.oldOffset.Name = "oldOffset";
@@ -332,7 +302,6 @@
             base.Controls.Add(this.saveButton);
             base.Controls.Add(this.runView);
             base.Controls.Add(this.buttonAutoFillBests);
-            base.Controls.Add(this.buttonImport);
             base.FormBorderStyle = FormBorderStyle.FixedDialog;
             base.MaximizeBox = false;
             base.MinimizeBox = false;
@@ -343,203 +312,6 @@
             ((ISupportInitialize)this.runView).EndInit();
             base.ResumeLayout(false);
             base.PerformLayout();
-        }
-
-        private void menuItemImportSplitterZ_Click(object sender, EventArgs e)
-        {
-            // Imports a file from a SplitterZ run file
-            if (this.openFileDialog.ShowDialog(this) == DialogResult.OK)
-            {
-                try
-                {
-                    using (FileStream stream = File.OpenRead(this.openFileDialog.FileName))
-                    {
-                        var reader = new StreamReader(stream);
-
-                        var newLine = reader.ReadLine();
-                        var title = newLine.Split(',');
-                        titleBox.Text = title[0].Replace(@"‡", @",");
-
-                        List<Segment> segmentList = new List<Segment>();
-
-                        while ((newLine = reader.ReadLine()) != null)
-                        {
-                            var segmentInfo = newLine.Split(',');
-                            var name = segmentInfo[0].Replace(@"‡", @",");
-                            double splitTime = timeParse(segmentInfo[1]);
-                            double bestSegment = timeParse(segmentInfo[2]);
-
-                            var newSegment = new Segment(name, 0.0, splitTime, bestSegment);
-                            if (segmentInfo.Length > 3)
-                            {
-                                newSegment.IconPath = segmentInfo[3].Replace(@"‡", @",");
-                                newSegment.Icon = Image.FromFile(newSegment.IconPath);
-                            }
-                            segmentList.Add(newSegment);
-                        }
-                        populateList(segmentList);
-                    }
-                }
-                catch (Exception)
-                {
-                    // An error has occured...
-                }
-            }
-        }
-
-        private void menuItemImportLlanfair_Click(object sender, EventArgs e)
-        {
-            // Imports a file from a Llanfair run file
-            if (this.openFileDialog.ShowDialog(this) == DialogResult.OK)
-            {
-                try
-                {
-                    using (FileStream stream = File.OpenRead(this.openFileDialog.FileName))
-                    {
-                        Int16 strLength;
-                        byte[] buffer = new byte[128];
-
-                        // Finds the goal string in the file
-                        stream.Seek(0xC5, SeekOrigin.Current);  // Skips to the length of the goal string
-
-                        stream.Read(buffer, 0, 2);
-                        strLength = BitConverter.ToInt16(this.toConverterEndianness(buffer, 0, 2), 0);
-                        stream.Read(buffer, 0, strLength);
-
-                        string strGoal = Encoding.UTF8.GetString(buffer, 0, strLength);
-
-                        // Finds the title string in the file
-                        stream.Seek(0x1, SeekOrigin.Current);   // Skips to the length of the title string
-
-                        stream.Read(buffer, 0, 2);
-                        strLength = BitConverter.ToInt16(this.toConverterEndianness(buffer, 0, 2), 0);
-                        stream.Read(buffer, 0, strLength);
-
-                        string strTitle = Encoding.UTF8.GetString(buffer, 0, strLength);
-
-                        // Finds the number of elements in the segment list
-                        stream.Seek(0x6, SeekOrigin.Current);
-
-                        stream.Read(buffer, 0, 4);
-
-                        Int32 segmentListCount = BitConverter.ToInt32(this.toConverterEndianness(buffer, 0, 4), 0);
-                        
-                        // The object header changes if there is no instance of one of the object used by the Run class.
-                        // The 2 objects that can be affected are the Time object and the ImageIcon object.
-                        // The next step of the import algorythm is to check for their presence.
-                        bool timeObjectDeclarationEncountered = false;
-                        bool iconObjectDeclarationEncountered = false;
-
-                        List<Segment> segmentList = new List<Segment>();
-
-                        // Seeks to the first byte of the first segment
-                        stream.Seek(0x8F, SeekOrigin.Current);
-                        for (int i = 0; i < segmentListCount; ++i)
-                        {
-                            Int64 bestSegmentMillis = 0;
-                            stream.Read(buffer, 0, 1);
-                            if (buffer[0] != 0x70)
-                            {
-                                if (!timeObjectDeclarationEncountered)
-                                {
-                                    timeObjectDeclarationEncountered = true;
-
-                                    // Seek past the object declaration
-                                    stream.Seek(0x36, SeekOrigin.Current);
-                                }
-                                else
-                                    stream.Seek(0x5, SeekOrigin.Current);
-
-                                // Read the remaining 7 bytes of data in the buffer:
-                                stream.Read(buffer, 0, 8);
-                                bestSegmentMillis = BitConverter.ToInt64(this.toConverterEndianness(buffer, 0, 8), 0);
-                            }
-
-                            stream.Read(buffer, 0, 1);
-                            if (buffer[0] != 0x70)
-                            {
-                                long seekOffsetBase;
-                                if (!iconObjectDeclarationEncountered)
-                                {
-                                    iconObjectDeclarationEncountered = true;
-
-                                    stream.Seek(0xBC, SeekOrigin.Current);
-                                    seekOffsetBase = 0x25;
-                                }
-                                else
-                                {
-                                    stream.Seek(0x5, SeekOrigin.Current);
-                                    seekOffsetBase = 0x18;
-                                }
-
-                                stream.Read(buffer, 0, 8);
-                                Int32 iconHeight = BitConverter.ToInt32(this.toConverterEndianness(buffer, 0, 4), 0);
-                                Int32 iconWidth = BitConverter.ToInt32(this.toConverterEndianness(buffer, 4, 4), 4);
-
-                                // Seek past the image:
-                                stream.Seek(seekOffsetBase + (iconHeight * iconWidth * 4), SeekOrigin.Current);
-                            }
-
-                            // Finds the name of the segment (can't be empty)
-                            stream.Seek(0x1, SeekOrigin.Current);   // Skip to the length of the name string
-                            stream.Read(buffer, 0, 2);
-                            strLength = BitConverter.ToInt16(this.toConverterEndianness(buffer, 0, 2), 0);
-                            stream.Read(buffer, 0, strLength);
-
-                            string name = Encoding.UTF8.GetString(buffer, 0, strLength);
-
-                            // Finds the best time of the segment
-                            Int64 bestTimeMillis = 0;
-                            stream.Read(buffer, 0, 1);
-                            if (buffer[0] == 0x71)
-                            {
-                                stream.Seek(0x4, SeekOrigin.Current);
-                                bestTimeMillis = bestSegmentMillis;
-                            }
-                            else if (buffer[0] != 0x70)
-                            {
-                                // Since there is always a best segment when there is a best time in Llanfair,
-                                // I assume that there will never be another Time object declaration before this data.
-                                stream.Seek(0x5, SeekOrigin.Current);
-                                stream.Read(buffer, 0, 8);
-                                bestTimeMillis = BitConverter.ToInt64(this.toConverterEndianness(buffer, 0, 8), 0);
-                            }
-
-                            double bestTime = bestTimeMillis / 1000.0;
-
-                            if (bestTimeMillis != 0)
-                            {
-                                for (int j = i - 1; j >= 0; --j)
-                                {
-                                    if (segmentList[j].BestTime != 0.0)
-                                    {
-                                        bestTime += segmentList[j].BestTime;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            segmentList.Add(new Segment(name, 0.0, bestTime, bestSegmentMillis / 1000.0));
-
-                            // Seek to the beginning of the next segment name
-                            stream.Seek(0x6, SeekOrigin.Current);
-                        }
-
-                        // The only remaining thing in the file should be the window height and width for Llanfair usage.
-                        // We don't need to extract it.
-
-                        if (strGoal == "")
-                            ;
-                        
-                        this.populateList(segmentList);
-                        this.titleBox.Text = strTitle;
-                    }
-                }
-                catch (Exception)
-                {
-                    // An error has occured...
-                }
-            }
         }
 
         private byte[] toConverterEndianness(byte[] array, int offset, int length)
@@ -554,16 +326,11 @@
             return array;
         }
 
-        private void buttonImport_MouseUp(object sender, MouseEventArgs e)
-        {
-            this.contextMenuImport.Show(this, new Point(this.buttonImport.Location.X, this.buttonImport.Location.Y + (this.buttonImport.ClientRectangle.Height - 1)));
-        }
-
         private void buttonAutoFillBests_Click(object sender, EventArgs e)
         {
             if (MessageBoxEx.Show(this, "Are you sure?", "Auto-fill best segments", MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                List<Segment> splitList = new List<Segment>();
+                List<ISegment> splitList = new List<ISegment>();
                 this.FillSplitList(ref splitList);
 
                 for (int i = 0; i < splitList.Count; ++i)
@@ -633,11 +400,11 @@
                 this.oldOffset.Text = Regex.Replace(this.oldOffset.Text, "[^0-9:.,]", "");
         }
 
-        private void populateList(List<Segment> splitList)
+        private void populateList(List<ISegment> splitList)
         {
             this.runView.Rows.Clear();
             this.runView.Rows[0].Cells[5].Value = Resources.MissingIcon;
-            foreach (Segment segment in splitList)
+            foreach (var segment in splitList)
             {
                 if (segment.Name != null)
                 {
@@ -648,26 +415,16 @@
                     string iconPath = "";
                     Image missingIcon = Resources.MissingIcon;
 
-                    if (segment.OldTime != 0.0)
-                        str2 = this.timeFormat(segment.OldTime);
+                    if (segment.Comparisons["Old"].RealTime.HasValue)
+                        str2 = this.timeFormat(segment.Comparisons["Old"].RealTime.Value.TotalSeconds);
 
-                    if (segment.BestTime != 0.0)
-                        str3 = this.timeFormat(segment.BestTime);
+                    if (segment.Comparisons[Run.PersonalBestComparisonName].RealTime.HasValue)
+                        str3 = this.timeFormat(segment.Comparisons[Run.PersonalBestComparisonName].RealTime.Value.TotalSeconds);
 
-                    if (segment.BestSegment != 0.0)
-                        str4 = this.timeFormat(segment.BestSegment);
+                    if (segment.Comparisons[BestSegmentsComparisonGenerator.ComparisonName].RealTime.HasValue)
+                        str4 = this.timeFormat(segment.Comparisons[BestSegmentsComparisonGenerator.ComparisonName].RealTime.Value.TotalSeconds);
 
-                    if ((segment.IconPath != null) && (segment.IconPath.Length > 1))
-                    {
-                        iconPath = segment.IconPath;
-                        try
-                        {
-                            missingIcon = Image.FromFile(segment.IconPath);
-                        }
-                        catch
-                        { }
-                    }
-                    this.runView.Rows.Add(new object[] { name, str2, str3, str4, iconPath, missingIcon });
+                    this.runView.Rows.Add(new object[] { name, str2, str3, str4, "", segment.Icon ?? Resources.MissingIcon });
                 }
             }
 
@@ -786,7 +543,7 @@
             FillSplitList(ref this.editList);
         }
 
-        private void FillSplitList(ref List<Segment> splitList)
+        private void FillSplitList(ref List<ISegment> splitList)
         {
             foreach (DataGridViewRow row in (IEnumerable)this.runView.Rows)
             {

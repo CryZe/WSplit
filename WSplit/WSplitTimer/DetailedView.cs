@@ -9,6 +9,8 @@
     using System.Linq;
     using System.Windows.Forms;
     using Properties;
+    using LiveSplit.Model;
+    using LiveSplit.Model.Comparisons;
 
     public class DetailedView : Form
     {
@@ -65,7 +67,7 @@
         public Label displayTime;
 
 
-        public DetailedView(Split useSplits, WSplit callingForm)
+        public DetailedView(IRun useSplits, WSplit callingForm)
         {
             base.Paint += new PaintEventHandler(this.dviewPaint);
             base.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
@@ -598,7 +600,7 @@
                 
                 // The detailed view used to only show a column if it had an ending time. I decided to change it, because
                 // the user can still decide to show a column or not manually.
-                if (Settings.Profile.DViewShowOld || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == Split.CompareType.Old))
+                if (Settings.Profile.DViewShowOld || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == "Old"))
                 {
                     this.segs.Columns[1].Visible = true;
                     num += 0x22;
@@ -606,7 +608,7 @@
                 else
                     this.segs.Columns[1].Visible = false;
 
-                if (Settings.Profile.DViewShowBest || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == Split.CompareType.Best))
+                if (Settings.Profile.DViewShowBest || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == LiveSplit.Model.Run.PersonalBestComparisonName))
                 {
                     this.segs.Columns[2].Visible = true;
                     num += 0x22;
@@ -618,7 +620,7 @@
                 else
                     this.segs.Columns[2].Visible = false;
 
-                if (Settings.Profile.DViewShowSumOfBests || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == Split.CompareType.SumOfBests))
+                if (Settings.Profile.DViewShowSumOfBests || (Settings.Profile.DViewShowComp && this.parent.split.ComparingType == BestSegmentsComparisonGenerator.ComparisonName))
                 {
                     this.segs.Columns[3].Visible = true;
                     num += 0x22;

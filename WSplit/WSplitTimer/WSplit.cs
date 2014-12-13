@@ -14,6 +14,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using WSplitTimer.Properties;
 using System.Diagnostics;
+using LiveSplit.Model;
 
 namespace WSplitTimer
 {
@@ -107,10 +108,11 @@ namespace WSplitTimer
         private string runFile;
         private string runTitle = "";
         private int segHeight = 14;
-        public Split split = new Split();
+        public IRun split = new Run(new LiveSplit.Model.Comparisons.StandardComparisonGeneratorsFactory());
+        public LiveSplitState State;
+        public ITimerModel Model;
         private Timer startDelay;
         private Timer stopwatch;
-        public DualStopwatch timer = new DualStopwatch(false);
         private bool wideResizing;
         private int wideResizingX;
         private int wideSegResizeWidth;
@@ -165,6 +167,10 @@ namespace WSplitTimer
 
         public WSplit()
         {
+            State = new LiveSplitState(split, this, null, null, null);
+            Model = new TimerModel();
+            State.RegisterTimerModel(Model);
+
             this.InitializeComponent();
             base.Paint += new PaintEventHandler(this.clockPaint);
             base.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
@@ -181,11 +187,9 @@ namespace WSplitTimer
         {
             string str = Assembly.GetExecutingAssembly().GetName().Name + " v" + FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion/*Assembly.GetExecutingAssembly().GetName().Version*/;
             DateTime buildDateTime = GetBuildDateTime(Assembly.GetExecutingAssembly());
-            double driftMilliseconds = this.timer.driftMilliseconds;
+            double driftMilliseconds = 0.0;
             string str2 = "Current fallback timer: " + string.Format("{0:+0.000;-0.000}", driftMilliseconds / 1000.0) + "s";
             string str3 = "";
-            if (this.timer.useFallback)
-                str3 = " [Using Fallback]";
 
             MessageBoxEx.Show(this, str + Environment.NewLine +
                             "by Wodanaz@SDA untill 1.4.4" + Environment.NewLine +
@@ -203,7 +207,7 @@ namespace WSplitTimer
         {
             if (this.advancedDetailButton.Checked)
             {
-                if (this.split.LiveRun)
+                if (State.CurrentPhase == TimerPhase.Running || State.CurrentPhase == TimerPhase.Paused)
                     this.dview.Show();
             }
             else
@@ -556,9 +560,8 @@ namespace WSplitTimer
 
         private void doSplit()
         {
-            double time = Math.Truncate(this.timer.Elapsed.TotalSeconds * 100) / 100;
-            this.split.DoSplit(time);
-            if (!this.split.Done)
+            Model.Split();
+            if (State.CurrentPhase != TimerPhase.Ended)
             {
                 this.flashClock();
             }

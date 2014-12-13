@@ -8,7 +8,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <AssemblyName>WSplit</AssemblyName>
     <OutputType>WinExe</OutputType>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <PublishUrl>publier\</PublishUrl>
@@ -167,5 +167,10 @@
     <Content Include="Resources\AppIcon.ico" />
     <Content Include="Resources\MissingIcon.png" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="libs\LiveSplit\LiveSplit\LiveSplit.Core\LiveSplit.Core.csproj">
+      <Project>{6de847db-20a3-4848-aeee-1b4364aecdfb}</Project>
+      <Name>LiveSplit.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
 </Project>

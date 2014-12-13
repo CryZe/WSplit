@@ -1,4 +1,5 @@
-﻿using System;
+﻿/*using LiveSplit.Model;
+using System;
 using System.Collections.Generic;
 
 public class Split
@@ -353,5 +354,4 @@ public class Split
         Best,
         SumOfBests
     }
-}
-
+}*/

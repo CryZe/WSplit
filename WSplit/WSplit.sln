@@ -1,20 +1,51 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 14
+VisualStudioVersion = 14.0.22310.1
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WSplit", "WSplit.csproj", "{5E89D3CD-D50A-41A1-9842-6089C07E125A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Libs", "Libs", "{97C44808-BC7F-4453-8D92-CAB4B13C4E21}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveSplit.Core", "libs\LiveSplit\LiveSplit\LiveSplit.Core\LiveSplit.Core.csproj", "{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
 		Debug|x86 = Debug|x86
+		Release Candidate|Any CPU = Release Candidate|Any CPU
+		Release Candidate|x86 = Release Candidate|x86
+		Release|Any CPU = Release|Any CPU
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Debug|Any CPU.ActiveCfg = Debug|x86
 		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Debug|x86.ActiveCfg = Debug|x86
 		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Debug|x86.Build.0 = Debug|x86
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release Candidate|Any CPU.ActiveCfg = Release|x86
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release Candidate|Any CPU.Build.0 = Release|x86
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release Candidate|x86.ActiveCfg = Release|x86
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release Candidate|x86.Build.0 = Release|x86
+		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release|Any CPU.ActiveCfg = Release|x86
 		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release|x86.ActiveCfg = Release|x86
 		{5E89D3CD-D50A-41A1-9842-6089C07E125A}.Release|x86.Build.0 = Release|x86
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Debug|x86.Build.0 = Debug|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release Candidate|Any CPU.ActiveCfg = Release Candidate|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release Candidate|Any CPU.Build.0 = Release Candidate|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release Candidate|x86.ActiveCfg = Release Candidate|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release Candidate|x86.Build.0 = Release Candidate|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release|x86.ActiveCfg = Release|Any CPU
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6DE847DB-20A3-4848-AEEE-1B4364AECDFB} = {97C44808-BC7F-4453-8D92-CAB4B13C4E21}
 	EndGlobalSection
 EndGlobal
